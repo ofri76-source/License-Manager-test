@@ -829,6 +829,10 @@ jQuery(document).ready(function($) {
         formData.push({ name: 'action', value: 'kbbm_save_customer' });
         formData.push({ name: 'nonce', value: m365Ajax.nonce });
 
+        if (testAfterSave) {
+            formData.push({ name: 'test_after_save', value: '1' });
+        }
+
         $.ajax({
             url: m365Ajax.ajaxurl,
             type: 'POST',
@@ -861,7 +865,7 @@ jQuery(document).ready(function($) {
 
                     setTimeout(function() {
                         location.reload();
-                    }, 1500);
+                    }, testAfterSave ? 2000 : 1500);
                 } else {
                     const errorMessage = response && response.data && response.data.message ? response.data.message : 'שגיאה בשמירת הלקוח';
                     showMessage('error', errorMessage);

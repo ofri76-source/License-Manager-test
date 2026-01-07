@@ -20,6 +20,7 @@ class M365_LM_Shortcodes {
         add_action('wp_ajax_m365_save_license', array($this, 'ajax_save_license'));
         add_action('wp_ajax_m365_save_license_type', array($this, 'ajax_save_license_type'));
         add_action('wp_ajax_kbbm_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_kbbm_update_customer_billing_group', array($this, 'ajax_update_customer_billing_group'));
     }
     
     public function enqueue_scripts() {
