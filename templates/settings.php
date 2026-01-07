@@ -10,6 +10,9 @@
         $license_types  = isset($license_types) ? $license_types : array();
         $log_retention_days = isset($log_retention_days) ? intval($log_retention_days) : 120;
         $use_test_server = (int) get_option('kbbm_use_test_server', 0);
+        $secret_alert_red_days = (int) get_option('kbbm_secret_alert_red_days', 15);
+        $secret_alert_yellow_days = (int) get_option('kbbm_secret_alert_yellow_days', 45);
+        $license_change_start_day = (int) get_option('kbbm_license_change_start_day', 1);
     ?>
     <?php if (empty($kbbm_single_page)) : ?>
 <div class="m365-nav-links">
@@ -40,7 +43,6 @@
             <h3>לקוחות רשומים</h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button id="add-customer" class="m365-btn m365-btn-success">הוסף לקוח חדש</button>
-                <button id="add-tenant-only" class="m365-btn m365-btn-secondary">הוסף טננט חדש</button>
             </div>
 
             <div id="customer-form-placeholder"></div>
@@ -83,6 +85,21 @@
                         </div>
 
                         <div class="form-group">
+                            <label>תוקף מפתח הצפנה:</label>
+                            <div class="kbbm-secret-expiry-field">
+                                <input type="date" id="customer-secret-expiry" name="client_secret_expires_at">
+                                <button type="button" class="m365-btn m365-btn-small m365-btn-secondary kbbm-secret-expiry-plus">+ שנתיים</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="customer-self-paying" name="is_self_paying" value="1">
+                                משלם לבד
+                            </label>
+                        </div>
+
+                        <div class="form-group">
                             <label>Tenant Domain:</label>
                             <input type="text" id="customer-tenant-domain" name="tenant_domain" placeholder="example.onmicrosoft.com">
                         </div>
@@ -105,6 +122,7 @@
 
                         <div class="form-actions">
                             <button type="submit" class="m365-btn m365-btn-primary">שמור</button>
+                            <button type="button" id="customer-save-test" class="m365-btn m365-btn-secondary">שמור וסנכרן</button>
                             <button type="button" class="m365-btn m365-modal-cancel">ביטול</button>
                         </div>
                     </form>
@@ -185,7 +203,7 @@
                                     }
                                 ?>
                                 <td><?php echo esc_html($customer->customer_number); ?></td>
-                                <td><?php echo esc_html($customer->customer_name); ?></td>
+                                <td><?php echo esc_html(wp_unslash($customer->customer_name)); ?></td>
                                 <td><?php echo esc_html(substr($tenant_id, 0, 20)) . (strlen($tenant_id) > 20 ? '...' : ''); ?></td>
                                 <td><?php echo esc_html(substr($client_id, 0, 20)) . (strlen($client_id) > 20 ? '...' : ''); ?></td>
                                 <td>
@@ -241,6 +259,9 @@
                 <div class="form-actions" style="margin-top:10px;">
                     <button id="copy-api-script" class="m365-btn m365-btn-success" type="button">העתק ללוח</button>
                     <a id="download-api-script" class="m365-btn m365-btn-secondary" href="#" target="_blank" rel="noreferrer">הורד סקריפט</a>
+                    <a class="m365-btn m365-btn-secondary" href="https://kb.macomp.co.il/wp-content/uploads/man/Install/KBBM-Setup.ps1" target="_blank" rel="noreferrer">הורדת KBBM-Setup.ps1</a>
+                    <a class="m365-btn m365-btn-secondary" href="https://kb.macomp.co.il/?page_id=55555" target="_blank" rel="noreferrer">מדריך הגדרה ראשונית</a>
+                    <a class="m365-btn m365-btn-secondary" href="https://kb.macomp.co.il/?page_id=66666" target="_blank" rel="noreferrer">מדריך חידוש מפתח הצפנה</a>
                 </div>
             </div>
             
@@ -267,8 +288,9 @@
                 <table class="m365-table kbbm-license-types-table">
                     <thead>
                         <tr>
-                            <th>SKU</th>
                             <th>שם רישיון (API)</th>
+                            <th>מק"ט בפריויטי</th>
+                            <th>שם בפריויטי</th>
                             <th>שם לתצוגה</th>
                             <th class="col-cost">מחיר רכישה</th>
                             <th class="col-sell">מחיר ללקוח</th>
@@ -285,14 +307,17 @@
                                     data-sku="<?php echo esc_attr($type->sku); ?>"
                                     data-name="<?php echo esc_attr($type->name); ?>"
                                     data-display-name="<?php echo esc_attr($type->display_name ?? $type->name); ?>"
+                                    data-priority-sku="<?php echo esc_attr($type->priority_sku ?? ''); ?>"
+                                    data-priority-name="<?php echo esc_attr($type->priority_name ?? ''); ?>"
                                     data-cost-price="<?php echo esc_attr($type->cost_price); ?>"
                                     data-selling-price="<?php echo esc_attr($type->selling_price); ?>"
                                     data-billing-cycle="<?php echo esc_attr($type->billing_cycle ?? 'monthly'); ?>"
                                     data-billing-frequency="<?php echo esc_attr($type->billing_frequency ?? 1); ?>"
                                     data-show-in-main="<?php echo isset($type->show_in_main) ? esc_attr($type->show_in_main) : 1; ?>"
                                 >
-                                    <td><?php echo esc_html($type->sku); ?></td>
                                     <td><?php echo esc_html($type->name); ?></td>
+                                    <td><?php echo esc_html($type->priority_sku ?? ''); ?></td>
+                                    <td><?php echo esc_html($type->priority_name ?? ''); ?></td>
                                     <td><?php echo esc_html($type->display_name ?? $type->name); ?></td>
                                     <td class="col-cost"><?php echo esc_html($type->cost_price); ?></td>
                                     <td class="col-sell"><?php echo esc_html($type->selling_price); ?></td>
@@ -304,11 +329,14 @@
                             <?php endforeach; ?>
                         <?php else : ?>
                             <tr>
-                                <td colspan="9" class="no-data">אין סוגי רישיונות מוגדרים</td>
+                                <td colspan="10" class="no-data">אין סוגי רישיונות מוגדרים</td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+            <div class="form-actions" style="margin-top: 12px;">
+                <a class="m365-btn m365-btn-secondary" href="https://scripting.up-in-the.cloud/licensing/list-of-o365-license-skuids-and-names.html" target="_blank" rel="noreferrer">בדיקת שמות</a>
             </div>
         </div>
     </div>
@@ -327,6 +355,21 @@
                     <label>מספר ימים לשמירת לוגים לפני מחיקה:</label>
                     <input type="number" id="kbbm-log-retention-days" name="log_retention_days" min="1" value="<?php echo esc_attr($log_retention_days); ?>" placeholder="120">
                     <small>ברירת המחדל: 120 ימים.</small>
+                </div>
+                <div class="form-group">
+                    <label>התראה אדומה לתוקף מפתח הצפנה (ימים):</label>
+                    <input type="number" id="kbbm-secret-alert-red" name="secret_alert_red_days" min="1" value="<?php echo esc_attr($secret_alert_red_days); ?>" placeholder="15">
+                    <small>ברירת מחדל: 15 ימים.</small>
+                </div>
+                <div class="form-group">
+                    <label>התראה צהובה לתוקף מפתח הצפנה (ימים):</label>
+                    <input type="number" id="kbbm-secret-alert-yellow" name="secret_alert_yellow_days" min="1" value="<?php echo esc_attr($secret_alert_yellow_days); ?>" placeholder="45">
+                    <small>ברירת מחדל: 45 ימים.</small>
+                </div>
+                <div class="form-group">
+                    <label>יום התחלה להתראות שינויי רישוי:</label>
+                    <input type="number" id="kbbm-license-change-start-day" name="license_change_start_day" min="1" max="31" value="<?php echo esc_attr($license_change_start_day); ?>" placeholder="1">
+                    <small>ההתראות יספרו שינויים החל מהיום שנבחר בכל חודש.</small>
                 </div>
                 <div class="form-actions">
                     <button type="submit" class="m365-btn m365-btn-primary">שמור הגדרות</button>
@@ -348,6 +391,14 @@
             <div class="form-group">
                 <label>שם רישיון (API)</label>
                 <input type="text" id="license-type-name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label>מק"ט בפריויטי</label>
+                <input type="text" id="license-type-priority-sku" name="priority_sku">
+            </div>
+            <div class="form-group">
+                <label>שם בפריויטי</label>
+                <input type="text" id="license-type-priority-name" name="priority_name">
             </div>
             <div class="form-group">
                 <label>שם לתצוגה</label>

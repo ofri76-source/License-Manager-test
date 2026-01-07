@@ -175,12 +175,14 @@ class M365_LM_Admin {
         }
         
         $data = array(
-            'customer_number' => sanitize_text_field($_POST['customer_number']),
-            'customer_name' => sanitize_text_field($_POST['customer_name']),
-            'tenant_id' => sanitize_text_field($_POST['tenant_id']),
-            'client_id' => sanitize_text_field($_POST['client_id']),
-            'client_secret' => sanitize_textarea_field($_POST['client_secret']),
-            'tenant_domain' => sanitize_text_field($_POST['tenant_domain'])
+            'customer_number' => sanitize_text_field(wp_unslash($_POST['customer_number'] ?? '')),
+            'customer_name' => sanitize_text_field(wp_unslash($_POST['customer_name'] ?? '')),
+            'tenant_id' => sanitize_text_field(wp_unslash($_POST['tenant_id'] ?? '')),
+            'client_id' => sanitize_text_field(wp_unslash($_POST['client_id'] ?? '')),
+            'client_secret' => sanitize_textarea_field(wp_unslash($_POST['client_secret'] ?? '')),
+            'client_secret_expires_at' => sanitize_text_field(wp_unslash($_POST['client_secret_expires_at'] ?? '')),
+            'is_self_paying' => !empty($_POST['is_self_paying']) ? 1 : 0,
+            'tenant_domain' => sanitize_text_field(wp_unslash($_POST['tenant_domain'] ?? ''))
         );
 
         $tenants_json = isset($_POST['tenants']) ? wp_unslash($_POST['tenants']) : '[]';
@@ -195,16 +197,16 @@ class M365_LM_Admin {
                 continue;
             }
 
-            $tenant_id = sanitize_text_field($tenant['tenant_id'] ?? '');
+            $tenant_id = sanitize_text_field(wp_unslash($tenant['tenant_id'] ?? ''));
             if ($tenant_id === '') {
                 continue;
             }
 
             $clean_tenants[] = array(
                 'tenant_id'     => $tenant_id,
-                'client_id'     => sanitize_text_field($tenant['client_id'] ?? ''),
-                'client_secret' => sanitize_textarea_field($tenant['client_secret'] ?? ''),
-                'tenant_domain' => sanitize_text_field($tenant['tenant_domain'] ?? ''),
+                'client_id'     => sanitize_text_field(wp_unslash($tenant['client_id'] ?? '')),
+                'client_secret' => sanitize_textarea_field(wp_unslash($tenant['client_secret'] ?? '')),
+                'tenant_domain' => sanitize_text_field(wp_unslash($tenant['tenant_domain'] ?? '')),
             );
         }
 
@@ -218,11 +220,59 @@ class M365_LM_Admin {
             M365_LM_Database::replace_customer_tenants($result, $clean_tenants);
         }
         
+        $test_after_save = !empty($_POST['test_after_save']);
+        $test_result = null;
+
+        if ($result && $test_after_save) {
+            $primary = !empty($clean_tenants) ? $clean_tenants[0] : array(
+                'tenant_id'     => $data['tenant_id'] ?? '',
+                'client_id'     => $data['client_id'] ?? '',
+                'client_secret' => $data['client_secret'] ?? '',
+            );
+
+            $test_result = self::run_customer_connection_test($result, $primary);
+        }
+
         if ($result) {
-            wp_send_json_success(array('message' => 'לקוח נשמר בהצלחה'));
+            $message = $test_after_save && $test_result && isset($test_result['message'])
+                ? $test_result['message']
+                : 'לקוח נשמר בהצלחה';
+            wp_send_json_success(array(
+                'message' => $message,
+                'customer_id' => $result,
+                'test_success' => $test_result['success'] ?? null,
+                'test_message' => $test_result['message'] ?? null,
+            ));
         } else {
             wp_send_json_error(array('message' => 'שגיאה בשמירת הלקוח'));
         }
+    }
+
+    private static function run_customer_connection_test($customer_id, $tenant) {
+        $tenant_id = sanitize_text_field($tenant['tenant_id'] ?? '');
+        $client_id = sanitize_text_field($tenant['client_id'] ?? '');
+        $client_secret = sanitize_textarea_field($tenant['client_secret'] ?? '');
+
+        if (empty($tenant_id) || empty($client_id) || empty($client_secret)) {
+            $message = 'חסרים פרטי Tenant/Client להגדרת חיבור';
+            M365_LM_Database::update_connection_status($customer_id, 'failed', $message);
+            M365_LM_Database::log_event('error', 'test_connection', $message, $customer_id);
+            return array('success' => false, 'message' => $message);
+        }
+
+        $api = new M365_LM_API_Connector($tenant_id, $client_id, $client_secret);
+        $result = $api->test_connection();
+        $message = $result['message'] ?? '';
+
+        if (!empty($result['success'])) {
+            M365_LM_Database::update_connection_status($customer_id, 'connected', $message);
+            M365_LM_Database::log_event('info', 'test_connection', $message, $customer_id, $result);
+        } else {
+            M365_LM_Database::update_connection_status($customer_id, 'failed', $message);
+            M365_LM_Database::log_event('error', 'test_connection', $message, $customer_id, $result);
+        }
+
+        return array('success' => !empty($result['success']), 'message' => $message);
     }
 
     public function ajax_add_tenant() {
@@ -242,10 +292,10 @@ class M365_LM_Admin {
             wp_send_json_error(array('message' => 'לקוח לא נמצא'));
         }
 
-        $tenant_id     = sanitize_text_field($_POST['tenant_id'] ?? '');
-        $client_id     = sanitize_text_field($_POST['client_id'] ?? '');
-        $client_secret = sanitize_textarea_field($_POST['client_secret'] ?? '');
-        $tenant_domain = sanitize_text_field($_POST['tenant_domain'] ?? '');
+        $tenant_id     = sanitize_text_field(wp_unslash($_POST['tenant_id'] ?? ''));
+        $client_id     = sanitize_text_field(wp_unslash($_POST['client_id'] ?? ''));
+        $client_secret = sanitize_textarea_field(wp_unslash($_POST['client_secret'] ?? ''));
+        $tenant_domain = sanitize_text_field(wp_unslash($_POST['tenant_domain'] ?? ''));
 
         if ($tenant_id === '') {
             wp_send_json_error(array('message' => 'Tenant ID נדרש'));
@@ -374,9 +424,18 @@ class M365_LM_Admin {
         $retention_days = isset($_POST['log_retention_days']) ? intval($_POST['log_retention_days']) : 120;
         $retention_days = $retention_days > 0 ? $retention_days : 120;
         $use_test_server = isset($_POST['use_test_server']) ? (int) $_POST['use_test_server'] : 0;
+        $secret_alert_red_days = isset($_POST['secret_alert_red_days']) ? intval($_POST['secret_alert_red_days']) : 15;
+        $secret_alert_red_days = $secret_alert_red_days > 0 ? $secret_alert_red_days : 15;
+        $secret_alert_yellow_days = isset($_POST['secret_alert_yellow_days']) ? intval($_POST['secret_alert_yellow_days']) : 45;
+        $secret_alert_yellow_days = $secret_alert_yellow_days > 0 ? $secret_alert_yellow_days : 45;
+        $license_change_start_day = isset($_POST['license_change_start_day']) ? intval($_POST['license_change_start_day']) : 1;
+        $license_change_start_day = ($license_change_start_day >= 1 && $license_change_start_day <= 31) ? $license_change_start_day : 1;
 
         update_option('kbbm_log_retention_days', $retention_days);
         update_option('kbbm_use_test_server', $use_test_server);
+        update_option('kbbm_secret_alert_red_days', $secret_alert_red_days);
+        update_option('kbbm_secret_alert_yellow_days', $secret_alert_yellow_days);
+        update_option('kbbm_license_change_start_day', $license_change_start_day);
 
         // בצע ניקוי מיידי בהתאם לערך המעודכן
         M365_LM_Database::prune_logs($retention_days);
@@ -385,6 +444,9 @@ class M365_LM_Admin {
             'message' => 'ההגדרות נשמרו בהצלחה',
             'log_retention_days' => $retention_days,
             'use_test_server' => $use_test_server,
+            'secret_alert_red_days' => $secret_alert_red_days,
+            'secret_alert_yellow_days' => $secret_alert_yellow_days,
+            'license_change_start_day' => $license_change_start_day,
         ));
     }
 }

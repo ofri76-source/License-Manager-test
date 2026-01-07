@@ -926,3 +926,55 @@
 /* Portal (single page) */
 .kbbm-portal-section{ display:none; }
 .kbbm-portal-nav a.active{ font-weight:700; text-decoration:underline; }
+
+.kbbm-customer-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #555;
+}
+
+.kbbm-secret-expiry {
+  font-weight: 600;
+}
+
+.kbbm-secret-expiry.is-warning {
+  color: #b7791f;
+}
+
+.kbbm-secret-expiry.is-danger,
+.kbbm-secret-expiry.is-expired {
+  color: #c53030;
+}
+
+.kbbm-license-change-alert {
+  font-weight: 600;
+}
+
+.kbbm-license-change-range {
+  font-size: 11px;
+  color: #777;
+}
+
+.kbbm-section-title {
+  margin: 20px 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.kbbm-self-pay-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.kbbm-secret-expiry-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

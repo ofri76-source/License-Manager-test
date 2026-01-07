@@ -16,6 +16,8 @@ class M365_LM_Database {
             tenant_id varchar(255) NOT NULL,
             client_id varchar(255) DEFAULT NULL,
             client_secret text DEFAULT NULL,
+            client_secret_expires_at date DEFAULT NULL,
+            is_self_paying tinyint(1) DEFAULT 0,
             tenant_domain varchar(255) DEFAULT NULL,
             last_connection_status varchar(20) DEFAULT 'unknown',
             last_connection_message text DEFAULT NULL,
@@ -35,6 +37,8 @@ class M365_LM_Database {
             tenant_id varchar(255) DEFAULT NULL,
             client_id varchar(255) DEFAULT NULL,
             client_secret text DEFAULT NULL,
+            client_secret_expires_at date DEFAULT NULL,
+            is_self_paying tinyint(1) DEFAULT 0,
             tenant_domain varchar(255) DEFAULT NULL,
             last_connection_status varchar(20) DEFAULT 'unknown',
             last_connection_message text DEFAULT NULL,
@@ -141,6 +145,8 @@ class M365_LM_Database {
             sku VARCHAR(150) NOT NULL,
             name VARCHAR(255) NOT NULL,
             display_name VARCHAR(255) DEFAULT '',
+            priority_sku VARCHAR(150) DEFAULT '',
+            priority_name VARCHAR(255) DEFAULT '',
             default_cost_price DECIMAL(10,2) DEFAULT 0,
             default_selling_price DECIMAL(10,2) DEFAULT 0,
             default_billing_cycle ENUM('monthly','yearly') DEFAULT 'monthly',
@@ -167,7 +173,13 @@ class M365_LM_Database {
         self::maybe_add_column($table_licenses, 'tenant_domain', "tenant_domain VARCHAR(255) NULL AFTER status_text");
         self::maybe_add_column($kb_licenses_table, 'tenant_domain', "tenant_domain VARCHAR(255) NULL AFTER status_text");
         self::maybe_add_column($types_table, 'display_name', "display_name VARCHAR(255) DEFAULT '' AFTER name");
+        self::maybe_add_column($types_table, 'priority_sku', "priority_sku VARCHAR(150) DEFAULT '' AFTER display_name");
+        self::maybe_add_column($types_table, 'priority_name', "priority_name VARCHAR(255) DEFAULT '' AFTER priority_sku");
         self::maybe_add_column($types_table, 'show_in_main', "show_in_main TINYINT(1) DEFAULT 1 AFTER default_billing_frequency");
+        self::maybe_add_column($table_customers, 'client_secret_expires_at', "client_secret_expires_at DATE DEFAULT NULL AFTER client_secret");
+        self::maybe_add_column($kb_customers_table, 'client_secret_expires_at', "client_secret_expires_at DATE DEFAULT NULL AFTER client_secret");
+        self::maybe_add_column($table_customers, 'is_self_paying', "is_self_paying TINYINT(1) DEFAULT 0 AFTER client_secret_expires_at");
+        self::maybe_add_column($kb_customers_table, 'is_self_paying', "is_self_paying TINYINT(1) DEFAULT 0 AFTER client_secret_expires_at");
     }
     
     // פונקציות CRUD ללקוחות
@@ -194,6 +206,19 @@ class M365_LM_Database {
             $wpdb->insert($table, $data);
             return $wpdb->insert_id;
         }
+    }
+
+    public static function update_customer_billing_group($customer_id, $is_self_paying) {
+        global $wpdb;
+        $table = self::get_customers_table_name();
+
+        return $wpdb->update(
+            $table,
+            array('is_self_paying' => $is_self_paying ? 1 : 0),
+            array('id' => intval($customer_id)),
+            array('%d'),
+            array('%d')
+        );
     }
 
     public static function replace_customer_tenants($customer_id, $tenants) {
@@ -252,6 +277,21 @@ class M365_LM_Database {
         global $wpdb;
         $table = $wpdb->prefix . 'm365_licenses';
         return $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $id));
+    }
+
+    public static function get_license_by_sku($customer_id, $sku_id, $tenant_domain = '') {
+        global $wpdb;
+        $table = $wpdb->prefix . 'm365_licenses';
+
+        $query = "SELECT * FROM {$table} WHERE customer_id = %d AND sku_id = %s";
+        $params = array(intval($customer_id), sanitize_text_field($sku_id));
+
+        if (!empty($tenant_domain)) {
+            $query .= " AND tenant_domain = %s";
+            $params[] = sanitize_text_field($tenant_domain);
+        }
+
+        return $wpdb->get_row($wpdb->prepare($query, $params));
     }
     
     public static function save_license($data) {
@@ -350,7 +390,7 @@ class M365_LM_Database {
         }
 
         return $wpdb->get_results(
-            $wpdb->prepare("SELECT sku, name, display_name, show_in_main, default_cost_price AS cost_price, default_selling_price AS selling_price, default_billing_cycle AS billing_cycle, default_billing_frequency AS billing_frequency FROM {$types_table} WHERE is_active = %d ORDER BY name", 1)
+            $wpdb->prepare("SELECT sku, name, display_name, priority_sku, priority_name, show_in_main, default_cost_price AS cost_price, default_selling_price AS selling_price, default_billing_cycle AS billing_cycle, default_billing_frequency AS billing_frequency FROM {$types_table} WHERE is_active = %d ORDER BY name", 1)
         );
     }
 
@@ -394,6 +434,8 @@ class M365_LM_Database {
             if (!isset($indexed[$license->sku])) {
                 $license->name          = $license->plan_name;
                 $license->display_name  = $license->plan_name;
+                $license->priority_sku  = '';
+                $license->priority_name = '';
                 $license->show_in_main  = 1;
                 $indexed[$license->sku] = $license;
             } else {
@@ -435,6 +477,8 @@ class M365_LM_Database {
             'sku'                     => $data['sku'],
             'name'                    => $data['name'],
             'display_name'            => isset($data['display_name']) ? $data['display_name'] : $data['name'],
+            'priority_sku'            => isset($data['priority_sku']) ? $data['priority_sku'] : '',
+            'priority_name'           => isset($data['priority_name']) ? $data['priority_name'] : '',
             'default_cost_price'      => isset($data['cost_price']) ? $data['cost_price'] : 0,
             'default_selling_price'   => isset($data['selling_price']) ? $data['selling_price'] : 0,
             'default_billing_cycle'   => isset($data['billing_cycle']) ? $data['billing_cycle'] : 'monthly',
@@ -568,7 +612,7 @@ class M365_LM_Database {
             'license_query'  => '',
             'date_from'      => '',
             'date_to'        => '',
-            'contexts'       => array('save_license', 'delete_license', 'restore_license', 'hard_delete', 'sync_licenses', 'upsert_license_by_sku'),
+            'contexts'       => array('save_license', 'delete_license', 'restore_license', 'hard_delete', 'sync_licenses', 'upsert_license_by_sku', 'נרכש', 'זוכה'),
         );
 
         $args = wp_parse_args($args, $defaults);
@@ -645,6 +689,77 @@ class M365_LM_Database {
         }
 
         return $filtered;
+    }
+
+    public static function get_license_change_start_date($start_day = 1) {
+        $start_day = intval($start_day);
+        if ($start_day < 1 || $start_day > 31) {
+            $start_day = 1;
+        }
+
+        $tz = wp_timezone();
+        $today = new DateTime('now', $tz);
+        $current_day = intval($today->format('j'));
+
+        $start = clone $today;
+        if ($current_day < $start_day) {
+            $start->modify('first day of last month');
+        } else {
+            $start->modify('first day of this month');
+        }
+
+        $days_in_month = intval($start->format('t'));
+        $day = min($start_day, $days_in_month);
+        $start->setDate(intval($start->format('Y')), intval($start->format('m')), $day);
+        $start->setTime(0, 0, 0);
+
+        return $start->format('Y-m-d H:i:s');
+    }
+
+    public static function get_license_change_summary($start_date) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'kb_billing_logs';
+        $contexts = array('נרכש', 'זוכה');
+        $context_placeholders = implode(',', array_fill(0, count($contexts), '%s'));
+
+        $params = $contexts;
+        $sql = "SELECT customer_id, context, data FROM {$table} WHERE context IN ({$context_placeholders})";
+
+        if (!empty($start_date)) {
+            $sql .= ' AND event_time >= %s';
+            $params[] = $start_date;
+        }
+
+        $rows = $wpdb->get_results($wpdb->prepare($sql, $params));
+
+        $summary = array();
+        foreach ($rows as $row) {
+            $customer_id = intval($row->customer_id);
+            if (!$customer_id) {
+                continue;
+            }
+
+            if (!isset($summary[$customer_id])) {
+                $summary[$customer_id] = array('purchased' => 0, 'credited' => 0);
+            }
+
+            $delta = 0;
+            if (!empty($row->data)) {
+                $decoded = json_decode($row->data, true);
+                if (is_array($decoded) && isset($decoded['delta'])) {
+                    $delta = intval($decoded['delta']);
+                }
+            }
+
+            if ($delta > 0) {
+                $summary[$customer_id]['purchased'] += $delta;
+            } elseif ($delta < 0) {
+                $summary[$customer_id]['credited'] += abs($delta);
+            }
+        }
+
+        return $summary;
     }
 
     public static function get_log_retention_days() {
