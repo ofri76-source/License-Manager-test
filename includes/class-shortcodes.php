@@ -20,6 +20,7 @@ class M365_LM_Shortcodes {
         add_action('wp_ajax_m365_save_license', array($this, 'ajax_save_license'));
         add_action('wp_ajax_m365_save_license_type', array($this, 'ajax_save_license_type'));
         add_action('wp_ajax_kbbm_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_kbbm_update_customer_billing_group', array($this, 'ajax_update_customer_billing_group'));
     }
     
     public function enqueue_scripts() {
@@ -143,9 +144,11 @@ class M365_LM_Shortcodes {
     public function ajax_save_license_type() {
         check_ajax_referer('m365_nonce', 'nonce');
 
-        $sku              = sanitize_text_field($_POST['sku'] ?? '');
-        $api_name         = sanitize_text_field($_POST['name'] ?? '');
-        $display_name     = sanitize_text_field($_POST['display_name'] ?? $api_name);
+        $sku              = sanitize_text_field(wp_unslash($_POST['sku'] ?? ''));
+        $api_name         = sanitize_text_field(wp_unslash($_POST['name'] ?? ''));
+        $display_name     = sanitize_text_field(wp_unslash($_POST['display_name'] ?? $api_name));
+        $priority_sku     = sanitize_text_field(wp_unslash($_POST['priority_sku'] ?? ''));
+        $priority_name    = sanitize_text_field(wp_unslash($_POST['priority_name'] ?? ''));
         $cost_price       = floatval($_POST['cost_price'] ?? 0);
         $selling_price    = floatval($_POST['selling_price'] ?? 0);
         $billing_cycle    = sanitize_text_field($_POST['billing_cycle'] ?? 'monthly');
@@ -160,6 +163,8 @@ class M365_LM_Shortcodes {
             'sku'              => $sku,
             'name'             => $api_name,
             'display_name'     => $display_name,
+            'priority_sku'     => $priority_sku,
+            'priority_name'    => $priority_name,
             'cost_price'       => $cost_price,
             'selling_price'    => $selling_price,
             'billing_cycle'    => $billing_cycle,
@@ -210,6 +215,13 @@ class M365_LM_Shortcodes {
             }
 
             foreach ($skus['skus'] as $sku) {
+                $tenant_domain = isset($tenant->tenant_domain) ? $tenant->tenant_domain : '';
+                $existing = M365_LM_Database::get_license_by_sku($customer_id, $sku['sku_id'], $tenant_domain);
+                $previous_total = 0;
+                if ($existing) {
+                    $previous_total = ($existing->quantity > 0) ? $existing->quantity : $existing->enabled_units;
+                }
+
                 $data = array(
                     'customer_id'      => $customer_id,
                     'sku_id'           => $sku['sku_id'],
@@ -222,8 +234,25 @@ class M365_LM_Shortcodes {
                     'cost_price'       => 0,
                     'selling_price'    => 0,
                     'status_text'      => $sku['status'] ?? '',
-                    'tenant_domain'    => isset($tenant->tenant_domain) ? $tenant->tenant_domain : '',
+                    'tenant_domain'    => $tenant_domain,
                 );
+
+                $current_total = $sku['enabled_units'];
+                $delta = $current_total - $previous_total;
+                if ($delta !== 0) {
+                    $context = $delta > 0 ? 'נרכש' : 'זוכה';
+                    $message = $delta > 0
+                        ? sprintf('נרכשו %d רישיונות', $delta)
+                        : sprintf('זוכה %d רישיונות', abs($delta));
+                    M365_LM_Database::log_event('info', $context, $message, $customer_id, array(
+                        'sku_id'         => $sku['sku_id'],
+                        'plan_name'      => $sku['plan_name'],
+                        'delta'          => $delta,
+                        'previous_total' => $previous_total,
+                        'current_total'  => $current_total,
+                        'tenant_domain'  => $tenant_domain,
+                    ));
+                }
 
                 M365_LM_Database::upsert_license_by_sku($customer_id, $sku['sku_id'], $data, $data['tenant_domain']);
                 $licenses_saved++;
@@ -285,6 +314,29 @@ class M365_LM_Shortcodes {
             'message' => $message,
             'time'    => current_time('mysql'),
         ));
+    }
+
+    public function ajax_update_customer_billing_group() {
+        check_ajax_referer('m365_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => 'אין הרשאה'));
+        }
+
+        $customer_id = intval($_POST['customer_id'] ?? 0);
+        $is_self_paying = intval($_POST['is_self_paying'] ?? 0) === 1;
+
+        if (!$customer_id) {
+            wp_send_json_error(array('message' => 'לקוח לא נמצא'));
+        }
+
+        $updated = M365_LM_Database::update_customer_billing_group($customer_id, $is_self_paying);
+
+        if ($updated === false) {
+            wp_send_json_error(array('message' => 'עדכון נכשל'));
+        }
+
+        wp_send_json_success(array('message' => 'עודכן בהצלחה'));
     }
 
 

@@ -8,6 +8,12 @@ $settings_url = $portal_urls['settings'] ?? 'https://kb.macomp.co.il/?page_id=14
 $logs_url     = $portal_urls['logs'] ?? 'https://kb.macomp.co.il/?page_id=14285';
 $alerts_url   = $portal_urls['alerts'] ?? 'https://kb.macomp.co.il/?page_id=14290';
 $active       = isset($active) ? $active : '';
+$secret_alert_red_days = (int) get_option('kbbm_secret_alert_red_days', 15);
+$secret_alert_yellow_days = (int) get_option('kbbm_secret_alert_yellow_days', 45);
+$license_change_start_day = (int) get_option('kbbm_license_change_start_day', 1);
+$license_change_start_date = M365_LM_Database::get_license_change_start_date($license_change_start_day);
+$license_change_summary = M365_LM_Database::get_license_change_summary($license_change_start_date);
+$customers_by_id = array();
 
 // Billing period input removed from header per user request; keep defaults for downstream use if present
 $current_billing_period = isset($_GET['billing_period']) ? sanitize_text_field(wp_unslash($_GET['billing_period'])) : '';
@@ -15,6 +21,14 @@ $billing_period_label = $current_billing_period !== '' ? $current_billing_period
 
 $grouped_customers = array();
 $types_by_sku      = array();
+$paying_customers = array();
+$self_paying_customers = array();
+
+if (!empty($customers)) {
+    foreach ($customers as $customer) {
+        $customers_by_id[$customer->id] = $customer;
+    }
+}
 
 if (!empty($license_types)) {
     foreach ($license_types as $type) {
@@ -67,45 +81,20 @@ if (!empty($licenses)) {
         $grouped_customers[$cid]['licenses'][] = $license;
     }
 }
-?>
 
-<div class="m365-lm-container">
-    <?php if (empty($kbbm_single_page)) : ?>
-<div class="m365-nav-links">
-        <a href="<?php echo esc_url($main_url); ?>" class="<?php echo $active === 'main' ? 'active' : ''; ?>">ראשי</a>
-        <a href="<?php echo esc_url($recycle_url); ?>" class="<?php echo $active === 'recycle' ? 'active' : ''; ?>">סל מחזור</a>
-        <a href="<?php echo esc_url($settings_url); ?>" class="<?php echo $active === 'settings' ? 'active' : ''; ?>">הגדרות</a>
-        <a href="<?php echo esc_url($logs_url); ?>" class="<?php echo $active === 'logs' ? 'active' : ''; ?>">לוגים</a>
-        <a href="<?php echo esc_url($alerts_url); ?>" class="<?php echo $active === 'alerts' ? 'active' : ''; ?>">התראות</a>
-    </div>
-<?php endif; ?>
+foreach ($grouped_customers as $cid => $customer) {
+    $customer_details = $customers_by_id[$cid] ?? null;
+    $is_self_paying = $customer_details && !empty($customer_details->is_self_paying);
+    if ($is_self_paying) {
+        $self_paying_customers[$cid] = $customer;
+    } else {
+        $paying_customers[$cid] = $customer;
+    }
+}
 
-
-    <div class="m365-header">
-        <div class="m365-header-left">
-            <h2>ניהול רישיונות Microsoft 365</h2>
-        </div>
-        <div class="m365-actions">
-            <form method="get" class="kbbm-period-form">
-                <label for="kbbm-billing-period">מחזור חיוב</label>
-                <input type="text" id="kbbm-billing-period" name="billing_period" value="<?php echo esc_attr($current_billing_period); ?>" placeholder="למשל: אפריל">
-                <button type="submit" class="m365-btn m365-btn-secondary">עדכן</button>
-            </form>
-            <select id="customer-select">
-                <option value="">בחר לקוח לסנכרון</option>
-                <?php foreach ($customers as $customer): ?>
-                    <option value="<?php echo esc_attr($customer->id); ?>">
-                        <?php echo esc_html($customer->customer_name); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <button id="sync-licenses" class="m365-btn m365-btn-primary">סנכרון רישיונות</button>
-            <button id="sync-all-licenses" class="m365-btn m365-btn-secondary">סנכרון הכל</button>
-        </div>
-    </div>
-
-    <div id="sync-message" class="m365-message" style="display:none;"></div>
-
+$render_customer_table = function($title, $customers_group) use ($billing_period_label, $customers_by_id, $secret_alert_red_days, $secret_alert_yellow_days, $license_change_summary, $license_change_start_date) {
+    ?>
+    <h3 class="kbbm-section-title"><?php echo esc_html($title); ?></h3>
     <div class="m365-table-wrapper">
         <table class="m365-table kbbm-report-table">
             <thead>
@@ -118,12 +107,12 @@ if (!empty($licenses)) {
                 </tr>
             </thead>
             <tbody>
-            <?php if (empty($grouped_customers)): ?>
+            <?php if (empty($customers_group)): ?>
                 <tr>
                     <td colspan="10" class="kbbm-no-data">אין נתונים להצגה. בצע סנכרון ראשוני.</td>
                 </tr>
             <?php else: ?>
-                <?php foreach ($grouped_customers as $cid => $customer): ?>
+                <?php foreach ($customers_group as $cid => $customer): ?>
                     <?php
                         $total_charges = 0;
                         $customer_notes = '';
@@ -140,6 +129,38 @@ if (!empty($licenses)) {
                                 $customer_notes = $license->notes;
                             }
                         }
+
+                        $customer_details = $customers_by_id[$cid] ?? null;
+                        $secret_expiry = $customer_details->client_secret_expires_at ?? '';
+                        $secret_label = 'לא הוגדר';
+                        $secret_class = 'kbbm-secret-expiry';
+                        if (!empty($secret_expiry)) {
+                            $timezone = wp_timezone();
+                            $today = new DateTime('now', $timezone);
+                            $today->setTime(0, 0, 0);
+                            $expiry = new DateTime($secret_expiry, $timezone);
+                            $days_remaining = (int) $today->diff($expiry)->format('%r%a');
+                            if ($days_remaining < 0) {
+                                $secret_label = 'פג תוקף';
+                                $secret_class .= ' is-expired';
+                            } else {
+                                $secret_label = sprintf('נותרו %d ימים', $days_remaining);
+                                if ($days_remaining <= $secret_alert_red_days) {
+                                    $secret_class .= ' is-danger';
+                                } elseif ($days_remaining <= $secret_alert_yellow_days) {
+                                    $secret_class .= ' is-warning';
+                                }
+                            }
+                        }
+
+                        $change_summary = $license_change_summary[$cid] ?? array('purchased' => 0, 'credited' => 0);
+                        $change_label = 'אין שינויים';
+                        if ($change_summary['purchased'] || $change_summary['credited']) {
+                            $change_label = sprintf('נרכש: %d | זוכה: %d', $change_summary['purchased'], $change_summary['credited']);
+                        }
+                        $change_range_label = sprintf('מאז %s', date_i18n('d.m.Y', strtotime($license_change_start_date)));
+                        $is_self_paying = $customer_details && !empty($customer_details->is_self_paying);
+                        $customer_name = wp_unslash($customer['customer_name']);
                     ?>
                     <?php
                         $has_customer_number = !empty($customer['customer_number']);
@@ -150,7 +171,20 @@ if (!empty($licenses)) {
                     ?>
                     <tr class="customer-summary" data-customer="<?php echo esc_attr($cid); ?>">
                         <td colspan="2" class="<?php echo $has_customer_number ? '' : 'kbbm-empty-summary'; ?>"><?php echo $has_customer_number ? esc_html($customer['customer_number']) : ''; ?></td>
-                        <td colspan="2" class="<?php echo $has_customer_name ? '' : 'kbbm-empty-summary'; ?>"><?php echo $has_customer_name ? esc_html($customer['customer_name']) : ''; ?></td>
+                        <td colspan="2" class="<?php echo $has_customer_name ? '' : 'kbbm-empty-summary'; ?>">
+                            <?php if ($has_customer_name): ?>
+                                <?php echo esc_html($customer_name); ?>
+                                <div class="kbbm-customer-alerts">
+                                    <span class="<?php echo esc_attr($secret_class); ?>">תוקף מפתח הצפנה: <?php echo esc_html($secret_label); ?></span>
+                                    <span class="kbbm-license-change-alert">שינויי רישוי: <?php echo esc_html($change_label); ?></span>
+                                    <span class="kbbm-license-change-range"><?php echo esc_html($change_range_label); ?></span>
+                                    <label class="kbbm-self-pay-label">
+                                        <input type="checkbox" class="kbbm-self-pay-toggle" data-customer="<?php echo esc_attr($cid); ?>" <?php checked($is_self_paying); ?>>
+                                        משלם לבד
+                                    </label>
+                                </div>
+                            <?php endif; ?>
+                        </td>
                         <td colspan="2" class="<?php echo $has_tenant_domain ? '' : 'kbbm-empty-summary'; ?>">
                             <?php if ($has_tenant_domain): ?>
                                 <?php foreach ($customer['tenant_domains'] as $domain => $tenant_totals): ?>
@@ -221,6 +255,49 @@ if (!empty($licenses)) {
             </tbody>
         </table>
     </div>
+    <?php
+};
+?>
+
+<div class="m365-lm-container">
+    <?php if (empty($kbbm_single_page)) : ?>
+<div class="m365-nav-links">
+        <a href="<?php echo esc_url($main_url); ?>" class="<?php echo $active === 'main' ? 'active' : ''; ?>">ראשי</a>
+        <a href="<?php echo esc_url($recycle_url); ?>" class="<?php echo $active === 'recycle' ? 'active' : ''; ?>">סל מחזור</a>
+        <a href="<?php echo esc_url($settings_url); ?>" class="<?php echo $active === 'settings' ? 'active' : ''; ?>">הגדרות</a>
+        <a href="<?php echo esc_url($logs_url); ?>" class="<?php echo $active === 'logs' ? 'active' : ''; ?>">לוגים</a>
+        <a href="<?php echo esc_url($alerts_url); ?>" class="<?php echo $active === 'alerts' ? 'active' : ''; ?>">התראות</a>
+    </div>
+<?php endif; ?>
+
+
+    <div class="m365-header">
+        <div class="m365-header-left">
+            <h2>ניהול רישיונות Microsoft 365</h2>
+        </div>
+        <div class="m365-actions">
+            <form method="get" class="kbbm-period-form">
+                <label for="kbbm-billing-period">מחזור חיוב</label>
+                <input type="text" id="kbbm-billing-period" name="billing_period" value="<?php echo esc_attr($current_billing_period); ?>" placeholder="למשל: אפריל">
+                <button type="submit" class="m365-btn m365-btn-secondary">עדכן</button>
+            </form>
+            <select id="customer-select">
+                <option value="">בחר לקוח לסנכרון</option>
+                <?php foreach ($customers as $customer): ?>
+                    <option value="<?php echo esc_attr($customer->id); ?>">
+                        <?php echo esc_html(wp_unslash($customer->customer_name)); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <button id="sync-licenses" class="m365-btn m365-btn-primary">סנכרון רישיונות</button>
+            <button id="sync-all-licenses" class="m365-btn m365-btn-secondary">סנכרון הכל</button>
+        </div>
+    </div>
+
+    <div id="sync-message" class="m365-message" style="display:none;"></div>
+
+    <?php $render_customer_table('לקוחות שאנחנו משלמים', $paying_customers); ?>
+    <?php $render_customer_table('לקוחות שמשלמים לבד', $self_paying_customers); ?>
 </div>
 
 <div id="edit-license-modal" class="m365-modal">
