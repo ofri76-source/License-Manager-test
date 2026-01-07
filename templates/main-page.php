@@ -8,6 +8,12 @@ $settings_url = $portal_urls['settings'] ?? 'https://kb.macomp.co.il/?page_id=14
 $logs_url     = $portal_urls['logs'] ?? 'https://kb.macomp.co.il/?page_id=14285';
 $alerts_url   = $portal_urls['alerts'] ?? 'https://kb.macomp.co.il/?page_id=14290';
 $active       = isset($active) ? $active : '';
+$secret_alert_red_days = (int) get_option('kbbm_secret_alert_red_days', 15);
+$secret_alert_yellow_days = (int) get_option('kbbm_secret_alert_yellow_days', 45);
+$license_change_start_day = (int) get_option('kbbm_license_change_start_day', 1);
+$license_change_start_date = M365_LM_Database::get_license_change_start_date($license_change_start_day);
+$license_change_summary = M365_LM_Database::get_license_change_summary($license_change_start_date);
+$customers_by_id = array();
 
 // Billing period input removed from header per user request; keep defaults for downstream use if present
 $current_billing_period = isset($_GET['billing_period']) ? sanitize_text_field(wp_unslash($_GET['billing_period'])) : '';
@@ -15,6 +21,12 @@ $billing_period_label = $current_billing_period !== '' ? $current_billing_period
 
 $grouped_customers = array();
 $types_by_sku      = array();
+
+if (!empty($customers)) {
+    foreach ($customers as $customer) {
+        $customers_by_id[$customer->id] = $customer;
+    }
+}
 
 if (!empty($license_types)) {
     foreach ($license_types as $type) {
@@ -140,6 +152,36 @@ if (!empty($licenses)) {
                                 $customer_notes = $license->notes;
                             }
                         }
+
+                        $customer_details = $customers_by_id[$cid] ?? null;
+                        $secret_expiry = $customer_details->client_secret_expires_at ?? '';
+                        $secret_label = 'לא הוגדר';
+                        $secret_class = 'kbbm-secret-expiry';
+                        if (!empty($secret_expiry)) {
+                            $timezone = wp_timezone();
+                            $today = new DateTime('now', $timezone);
+                            $today->setTime(0, 0, 0);
+                            $expiry = new DateTime($secret_expiry, $timezone);
+                            $days_remaining = (int) $today->diff($expiry)->format('%r%a');
+                            if ($days_remaining < 0) {
+                                $secret_label = 'פג תוקף';
+                                $secret_class .= ' is-expired';
+                            } else {
+                                $secret_label = sprintf('נותרו %d ימים', $days_remaining);
+                                if ($days_remaining <= $secret_alert_red_days) {
+                                    $secret_class .= ' is-danger';
+                                } elseif ($days_remaining <= $secret_alert_yellow_days) {
+                                    $secret_class .= ' is-warning';
+                                }
+                            }
+                        }
+
+                        $change_summary = $license_change_summary[$cid] ?? array('purchased' => 0, 'credited' => 0);
+                        $change_label = 'אין שינויים';
+                        if ($change_summary['purchased'] || $change_summary['credited']) {
+                            $change_label = sprintf('נרכש: %d | זוכה: %d', $change_summary['purchased'], $change_summary['credited']);
+                        }
+                        $change_range_label = sprintf('מאז %s', date_i18n('d.m.Y', strtotime($license_change_start_date)));
                     ?>
                     <?php
                         $has_customer_number = !empty($customer['customer_number']);
@@ -150,7 +192,16 @@ if (!empty($licenses)) {
                     ?>
                     <tr class="customer-summary" data-customer="<?php echo esc_attr($cid); ?>">
                         <td colspan="2" class="<?php echo $has_customer_number ? '' : 'kbbm-empty-summary'; ?>"><?php echo $has_customer_number ? esc_html($customer['customer_number']) : ''; ?></td>
-                        <td colspan="2" class="<?php echo $has_customer_name ? '' : 'kbbm-empty-summary'; ?>"><?php echo $has_customer_name ? esc_html($customer['customer_name']) : ''; ?></td>
+                        <td colspan="2" class="<?php echo $has_customer_name ? '' : 'kbbm-empty-summary'; ?>">
+                            <?php if ($has_customer_name): ?>
+                                <?php echo esc_html($customer['customer_name']); ?>
+                                <div class="kbbm-customer-alerts">
+                                    <span class="<?php echo esc_attr($secret_class); ?>">תוקף מפתח הצפנה: <?php echo esc_html($secret_label); ?></span>
+                                    <span class="kbbm-license-change-alert">שינויי רישוי: <?php echo esc_html($change_label); ?></span>
+                                    <span class="kbbm-license-change-range"><?php echo esc_html($change_range_label); ?></span>
+                                </div>
+                            <?php endif; ?>
+                        </td>
                         <td colspan="2" class="<?php echo $has_tenant_domain ? '' : 'kbbm-empty-summary'; ?>">
                             <?php if ($has_tenant_domain): ?>
                                 <?php foreach ($customer['tenant_domains'] as $domain => $tenant_totals): ?>
