@@ -865,6 +865,35 @@ jQuery(document).ready(function($) {
         submitCustomerForm(true);
     });
 
+    $(document).on('change', '.kbbm-self-pay-toggle', function() {
+        const checkbox = $(this);
+        const customerId = checkbox.data('customer');
+        const isSelfPaying = checkbox.is(':checked') ? 1 : 0;
+
+        if (!customerId) {
+            return;
+        }
+
+        $.post(m365Ajax.ajaxurl, {
+            action: 'kbbm_update_customer_billing_group',
+            nonce: m365Ajax.nonce,
+            customer_id: customerId,
+            is_self_paying: isSelfPaying,
+        }, function(response) {
+            if (response && response.success) {
+                showMessage('success', response.data && response.data.message ? response.data.message : 'עודכן בהצלחה');
+                setTimeout(function() { location.reload(); }, 800);
+            } else {
+                const msg = response && response.data && response.data.message ? response.data.message : 'עדכון נכשל';
+                showMessage('error', msg);
+                checkbox.prop('checked', !isSelfPaying);
+            }
+        }).fail(function() {
+            showMessage('error', 'שגיאה בעדכון');
+            checkbox.prop('checked', !isSelfPaying);
+        });
+    });
+
     // יצירת סקריפט API + תצוגה במודאל
     $('#generate-api-script').on('click', function() {
         const customerId = $('#api-customer-select').val();

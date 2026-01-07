@@ -193,7 +193,7 @@
                                     }
                                 ?>
                                 <td><?php echo esc_html($customer->customer_number); ?></td>
-                                <td><?php echo esc_html($customer->customer_name); ?></td>
+                                <td><?php echo esc_html(wp_unslash($customer->customer_name)); ?></td>
                                 <td><?php echo esc_html(substr($tenant_id, 0, 20)) . (strlen($tenant_id) > 20 ? '...' : ''); ?></td>
                                 <td><?php echo esc_html(substr($client_id, 0, 20)) . (strlen($client_id) > 20 ? '...' : ''); ?></td>
                                 <td>

@@ -20,6 +20,7 @@ class M365_LM_Shortcodes {
         add_action('wp_ajax_m365_save_license', array($this, 'ajax_save_license'));
         add_action('wp_ajax_m365_save_license_type', array($this, 'ajax_save_license_type'));
         add_action('wp_ajax_kbbm_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_kbbm_update_customer_billing_group', array($this, 'ajax_update_customer_billing_group'));
     }
     
     public function enqueue_scripts() {
@@ -313,6 +314,29 @@ class M365_LM_Shortcodes {
             'message' => $message,
             'time'    => current_time('mysql'),
         ));
+    }
+
+    public function ajax_update_customer_billing_group() {
+        check_ajax_referer('m365_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => 'אין הרשאה'));
+        }
+
+        $customer_id = intval($_POST['customer_id'] ?? 0);
+        $is_self_paying = intval($_POST['is_self_paying'] ?? 0) === 1;
+
+        if (!$customer_id) {
+            wp_send_json_error(array('message' => 'לקוח לא נמצא'));
+        }
+
+        $updated = M365_LM_Database::update_customer_billing_group($customer_id, $is_self_paying);
+
+        if ($updated === false) {
+            wp_send_json_error(array('message' => 'עדכון נכשל'));
+        }
+
+        wp_send_json_success(array('message' => 'עודכן בהצלחה'));
     }
 
 

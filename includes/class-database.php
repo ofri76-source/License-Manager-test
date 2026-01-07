@@ -17,6 +17,7 @@ class M365_LM_Database {
             client_id varchar(255) DEFAULT NULL,
             client_secret text DEFAULT NULL,
             client_secret_expires_at date DEFAULT NULL,
+            is_self_paying tinyint(1) DEFAULT 0,
             tenant_domain varchar(255) DEFAULT NULL,
             last_connection_status varchar(20) DEFAULT 'unknown',
             last_connection_message text DEFAULT NULL,
@@ -37,6 +38,7 @@ class M365_LM_Database {
             client_id varchar(255) DEFAULT NULL,
             client_secret text DEFAULT NULL,
             client_secret_expires_at date DEFAULT NULL,
+            is_self_paying tinyint(1) DEFAULT 0,
             tenant_domain varchar(255) DEFAULT NULL,
             last_connection_status varchar(20) DEFAULT 'unknown',
             last_connection_message text DEFAULT NULL,
@@ -176,6 +178,8 @@ class M365_LM_Database {
         self::maybe_add_column($types_table, 'show_in_main', "show_in_main TINYINT(1) DEFAULT 1 AFTER default_billing_frequency");
         self::maybe_add_column($table_customers, 'client_secret_expires_at', "client_secret_expires_at DATE DEFAULT NULL AFTER client_secret");
         self::maybe_add_column($kb_customers_table, 'client_secret_expires_at', "client_secret_expires_at DATE DEFAULT NULL AFTER client_secret");
+        self::maybe_add_column($table_customers, 'is_self_paying', "is_self_paying TINYINT(1) DEFAULT 0 AFTER client_secret_expires_at");
+        self::maybe_add_column($kb_customers_table, 'is_self_paying', "is_self_paying TINYINT(1) DEFAULT 0 AFTER client_secret_expires_at");
     }
     
     // פונקציות CRUD ללקוחות
@@ -202,6 +206,19 @@ class M365_LM_Database {
             $wpdb->insert($table, $data);
             return $wpdb->insert_id;
         }
+    }
+
+    public static function update_customer_billing_group($customer_id, $is_self_paying) {
+        global $wpdb;
+        $table = self::get_customers_table_name();
+
+        return $wpdb->update(
+            $table,
+            array('is_self_paying' => $is_self_paying ? 1 : 0),
+            array('id' => intval($customer_id)),
+            array('%d'),
+            array('%d')
+        );
     }
 
     public static function replace_customer_tenants($customer_id, $tenants) {
