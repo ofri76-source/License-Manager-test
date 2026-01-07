@@ -926,3 +926,34 @@
 /* Portal (single page) */
 .kbbm-portal-section{ display:none; }
 .kbbm-portal-nav a.active{ font-weight:700; text-decoration:underline; }
+
+.kbbm-customer-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #555;
+}
+
+.kbbm-secret-expiry {
+  font-weight: 600;
+}
+
+.kbbm-secret-expiry.is-warning {
+  color: #b7791f;
+}
+
+.kbbm-secret-expiry.is-danger,
+.kbbm-secret-expiry.is-expired {
+  color: #c53030;
+}
+
+.kbbm-license-change-alert {
+  font-weight: 600;
+}
+
+.kbbm-license-change-range {
+  font-size: 11px;
+  color: #777;
+}

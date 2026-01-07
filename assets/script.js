@@ -621,6 +621,7 @@ jQuery(document).ready(function($) {
         $('#customer-form')[0].reset();
         $('#customer-id').val('');
         $('#customer-lookup').val('');
+        $('#customer-secret-expiry').val('');
         $('#customer-lookup-results').hide();
         $('#customer-paste-source').val('');
         additionalTenantsContainer.empty();
@@ -652,6 +653,7 @@ jQuery(document).ready(function($) {
                 $('#customer-tenant-id').val(customer.tenant_id || '');
                 $('#customer-client-id').val(customer.client_id || '');
                 $('#customer-client-secret').val(customer.client_secret || '');
+                $('#customer-secret-expiry').val(customer.client_secret_expires_at || '');
                 $('#customer-tenant-domain').val(customer.tenant_domain || '');
                 $('#customer-paste-source').val('');
                 additionalTenantsContainer.empty();
@@ -817,15 +819,16 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // שמירת לקוח
-    $('#customer-form').on('submit', function(e) {
-        e.preventDefault();
-
+    function submitCustomerForm(testAfterSave) {
         serializeTenants();
 
-        const formData = $(this).serializeArray();
+        const formData = customerForm.serializeArray();
         formData.push({ name: 'action', value: 'kbbm_save_customer' });
         formData.push({ name: 'nonce', value: m365Ajax.nonce });
+
+        if (testAfterSave) {
+            formData.push({ name: 'test_after_save', value: '1' });
+        }
 
         $.ajax({
             url: m365Ajax.ajaxurl,
@@ -833,16 +836,33 @@ jQuery(document).ready(function($) {
             data: $.param(formData),
             success: function(response) {
                 if (response.success) {
-                    showMessage('success', 'הלקוח נשמר בהצלחה');
+                    const responseData = response.data || {};
+                    const message = responseData.test_message || responseData.message || 'הלקוח נשמר בהצלחה';
+                    const testSuccess = testAfterSave ? responseData.test_success : null;
+                    if (testAfterSave && testSuccess === false) {
+                        showMessage('error', message);
+                    } else {
+                        showMessage('success', message);
+                    }
                     setTimeout(function() {
                         location.reload();
-                    }, 1500);
+                    }, testAfterSave ? 2000 : 1500);
                 } else {
                     const errorMessage = response && response.data && response.data.message ? response.data.message : 'שגיאה בשמירת הלקוח';
                     showMessage('error', errorMessage);
                 }
             }
         });
+    }
+
+    // שמירת לקוח
+    customerForm.on('submit', function(e) {
+        e.preventDefault();
+        submitCustomerForm(false);
+    });
+
+    $('#customer-save-test').on('click', function() {
+        submitCustomerForm(true);
     });
 
     // יצירת סקריפט API + תצוגה במודאל
@@ -976,6 +996,8 @@ jQuery(document).ready(function($) {
         $('#license-type-sku').val(row.data('sku'));
         $('#license-type-name').val(row.data('name'));
         $('#license-type-display-name').val(row.data('display-name'));
+        $('#license-type-priority-sku').val(row.data('priority-sku'));
+        $('#license-type-priority-name').val(row.data('priority-name'));
         $('#license-type-cost').val(row.data('cost-price'));
         $('#license-type-selling').val(row.data('selling-price'));
         $('#license-type-cycle').val(row.data('billing-cycle'));
@@ -994,6 +1016,8 @@ jQuery(document).ready(function($) {
             sku: $('#license-type-sku').val(),
             name: $('#license-type-name').val(),
             display_name: $('#license-type-display-name').val(),
+            priority_sku: $('#license-type-priority-sku').val(),
+            priority_name: $('#license-type-priority-name').val(),
             cost_price: $('#license-type-cost').val(),
             selling_price: $('#license-type-selling').val(),
             billing_cycle: $('#license-type-cycle').val(),
@@ -1035,6 +1059,8 @@ jQuery(document).ready(function($) {
         $('#license-type-sku').val(row.data('sku'));
         $('#license-type-name').val(row.data('name'));
         $('#license-type-display-name').val(row.data('display-name'));
+        $('#license-type-priority-sku').val(row.data('priority-sku'));
+        $('#license-type-priority-name').val(row.data('priority-name'));
         $('#license-type-cost').val(row.data('cost-price'));
         $('#license-type-selling').val(row.data('selling-price'));
         $('#license-type-cycle').val(row.data('billing-cycle'));
@@ -1053,6 +1079,8 @@ jQuery(document).ready(function($) {
             sku: $('#license-type-sku').val(),
             name: $('#license-type-name').val(),
             display_name: $('#license-type-display-name').val(),
+            priority_sku: $('#license-type-priority-sku').val(),
+            priority_name: $('#license-type-priority-name').val(),
             cost_price: $('#license-type-cost').val(),
             selling_price: $('#license-type-selling').val(),
             billing_cycle: $('#license-type-cycle').val(),
@@ -1126,12 +1154,18 @@ jQuery(document).ready(function($) {
 
         const days = parseInt($('#kbbm-log-retention-days').val(), 10) || 120;
         const useTestServer = $('#kbbm-use-test-server').is(':checked') ? 1 : 0;
+        const secretAlertRed = parseInt($('#kbbm-secret-alert-red').val(), 10) || 15;
+        const secretAlertYellow = parseInt($('#kbbm-secret-alert-yellow').val(), 10) || 45;
+        const licenseChangeStartDay = parseInt($('#kbbm-license-change-start-day').val(), 10) || 1;
 
         $.post(m365Ajax.ajaxurl, {
             action: 'kbbm_save_settings',
             nonce: m365Ajax.nonce,
             log_retention_days: days,
-            use_test_server: useTestServer
+            use_test_server: useTestServer,
+            secret_alert_red_days: secretAlertRed,
+            secret_alert_yellow_days: secretAlertYellow,
+            license_change_start_day: licenseChangeStartDay
         }, function(response) {
             if (response && response.success) {
                 showMessage('success', (response.data && response.data.message) ? response.data.message : 'ההגדרות נשמרו');
