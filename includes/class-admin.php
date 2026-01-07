@@ -181,6 +181,7 @@ class M365_LM_Admin {
             'client_id' => sanitize_text_field(wp_unslash($_POST['client_id'] ?? '')),
             'client_secret' => sanitize_textarea_field(wp_unslash($_POST['client_secret'] ?? '')),
             'client_secret_expires_at' => sanitize_text_field(wp_unslash($_POST['client_secret_expires_at'] ?? '')),
+            'is_self_paying' => !empty($_POST['is_self_paying']) ? 1 : 0,
             'tenant_domain' => sanitize_text_field(wp_unslash($_POST['tenant_domain'] ?? ''))
         );
 

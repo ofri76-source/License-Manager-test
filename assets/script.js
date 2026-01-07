@@ -622,10 +622,12 @@ jQuery(document).ready(function($) {
         $('#customer-id').val('');
         $('#customer-lookup').val('');
         $('#customer-secret-expiry').val('');
+        $('#customer-self-paying').prop('checked', false);
         $('#customer-lookup-results').hide();
         $('#customer-paste-source').val('');
         additionalTenantsContainer.empty();
         $('#customer-tenants-json').val('[]');
+        applyDefaultSecretExpiry();
 
         showCustomerFormInPlaceholder();
     });
@@ -654,6 +656,7 @@ jQuery(document).ready(function($) {
                 $('#customer-client-id').val(customer.client_id || '');
                 $('#customer-client-secret').val(customer.client_secret || '');
                 $('#customer-secret-expiry').val(customer.client_secret_expires_at || '');
+                $('#customer-self-paying').prop('checked', Number(customer.is_self_paying) === 1);
                 $('#customer-tenant-domain').val(customer.tenant_domain || '');
                 $('#customer-paste-source').val('');
                 additionalTenantsContainer.empty();
@@ -819,7 +822,7 @@ jQuery(document).ready(function($) {
         });
     });
 
-    function submitCustomerForm(testAfterSave) {
+    function submitCustomerForm(syncAfterSave) {
         serializeTenants();
 
         const formData = customerForm.serializeArray();
@@ -837,13 +840,29 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     const responseData = response.data || {};
-                    const message = responseData.test_message || responseData.message || 'הלקוח נשמר בהצלחה';
-                    const testSuccess = testAfterSave ? responseData.test_success : null;
-                    if (testAfterSave && testSuccess === false) {
-                        showMessage('error', message);
-                    } else {
-                        showMessage('success', message);
+                    const message = responseData.message || 'הלקוח נשמר בהצלחה';
+                    showMessage('success', message);
+
+                    if (syncAfterSave && responseData.customer_id) {
+                        $.post(m365Ajax.ajaxurl, {
+                            action: 'm365_sync_licenses',
+                            nonce: m365Ajax.nonce,
+                            customer_id: responseData.customer_id,
+                        }).done(function(syncResponse) {
+                            if (syncResponse && syncResponse.success) {
+                                showMessage('success', syncResponse.data && syncResponse.data.message ? syncResponse.data.message : 'הסנכרון הושלם');
+                            } else {
+                                const syncMessage = syncResponse && syncResponse.data && syncResponse.data.message ? syncResponse.data.message : 'שגיאה בסנכרון רישיונות';
+                                showMessage('error', syncMessage);
+                            }
+                        }).always(function() {
+                            setTimeout(function() {
+                                location.reload();
+                            }, 1500);
+                        });
+                        return;
                     }
+
                     setTimeout(function() {
                         location.reload();
                     }, testAfterSave ? 2000 : 1500);
@@ -865,33 +884,24 @@ jQuery(document).ready(function($) {
         submitCustomerForm(true);
     });
 
-    $(document).on('change', '.kbbm-self-pay-toggle', function() {
-        const checkbox = $(this);
-        const customerId = checkbox.data('customer');
-        const isSelfPaying = checkbox.is(':checked') ? 1 : 0;
+    function calculateExpiryDate(days) {
+        const date = new Date();
+        date.setDate(date.getDate() + days);
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        const dd = String(date.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
 
-        if (!customerId) {
-            return;
+    function applyDefaultSecretExpiry() {
+        const expiryField = $('#customer-secret-expiry');
+        if (expiryField.length && !expiryField.val()) {
+            expiryField.val(calculateExpiryDate(730));
         }
+    }
 
-        $.post(m365Ajax.ajaxurl, {
-            action: 'kbbm_update_customer_billing_group',
-            nonce: m365Ajax.nonce,
-            customer_id: customerId,
-            is_self_paying: isSelfPaying,
-        }, function(response) {
-            if (response && response.success) {
-                showMessage('success', response.data && response.data.message ? response.data.message : 'עודכן בהצלחה');
-                setTimeout(function() { location.reload(); }, 800);
-            } else {
-                const msg = response && response.data && response.data.message ? response.data.message : 'עדכון נכשל';
-                showMessage('error', msg);
-                checkbox.prop('checked', !isSelfPaying);
-            }
-        }).fail(function() {
-            showMessage('error', 'שגיאה בעדכון');
-            checkbox.prop('checked', !isSelfPaying);
-        });
+    $(document).on('click', '.kbbm-secret-expiry-plus', function() {
+        $('#customer-secret-expiry').val(calculateExpiryDate(730));
     });
 
     // יצירת סקריפט API + תצוגה במודאל

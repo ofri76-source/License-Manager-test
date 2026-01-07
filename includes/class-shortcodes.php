@@ -316,30 +316,6 @@ class M365_LM_Shortcodes {
         ));
     }
 
-    public function ajax_update_customer_billing_group() {
-        check_ajax_referer('m365_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(array('message' => 'אין הרשאה'));
-        }
-
-        $customer_id = intval($_POST['customer_id'] ?? 0);
-        $is_self_paying = intval($_POST['is_self_paying'] ?? 0) === 1;
-
-        if (!$customer_id) {
-            wp_send_json_error(array('message' => 'לקוח לא נמצא'));
-        }
-
-        $updated = M365_LM_Database::update_customer_billing_group($customer_id, $is_self_paying);
-
-        if ($updated === false) {
-            wp_send_json_error(array('message' => 'עדכון נכשל'));
-        }
-
-        wp_send_json_success(array('message' => 'עודכן בהצלחה'));
-    }
-
-
     // AJAX - מחיקה רכה
     public function ajax_delete_license() {
         check_ajax_referer('m365_nonce', 'nonce');

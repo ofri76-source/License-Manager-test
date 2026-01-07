@@ -86,7 +86,17 @@
 
                         <div class="form-group">
                             <label>תוקף מפתח הצפנה:</label>
-                            <input type="date" id="customer-secret-expiry" name="client_secret_expires_at">
+                            <div class="kbbm-secret-expiry-field">
+                                <input type="date" id="customer-secret-expiry" name="client_secret_expires_at">
+                                <button type="button" class="m365-btn m365-btn-small m365-btn-secondary kbbm-secret-expiry-plus">+ שנתיים</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="customer-self-paying" name="is_self_paying" value="1">
+                                משלם לבד
+                            </label>
                         </div>
 
                         <div class="form-group">
@@ -112,7 +122,7 @@
 
                         <div class="form-actions">
                             <button type="submit" class="m365-btn m365-btn-primary">שמור</button>
-                            <button type="button" id="customer-save-test" class="m365-btn m365-btn-secondary">שמור ובדוק</button>
+                            <button type="button" id="customer-save-test" class="m365-btn m365-btn-secondary">שמור וסנכרן</button>
                             <button type="button" class="m365-btn m365-modal-cancel">ביטול</button>
                         </div>
                     </form>

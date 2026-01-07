@@ -971,3 +971,10 @@
   font-weight: 600;
   margin-top: 4px;
 }
+
+.kbbm-secret-expiry-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
