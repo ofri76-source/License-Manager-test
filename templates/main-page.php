@@ -30,6 +30,12 @@ if (!empty($customers)) {
     }
 }
 
+if (!empty($customers)) {
+    foreach ($customers as $customer) {
+        $customers_by_id[$customer->id] = $customer;
+    }
+}
+
 if (!empty($license_types)) {
     foreach ($license_types as $type) {
         if (!empty($type->sku)) {
