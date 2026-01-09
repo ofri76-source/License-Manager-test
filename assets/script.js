@@ -55,6 +55,58 @@
   setTimeout(bind, 500);
 })();
 
+// KBBM MAIN TABLE ACCORDION (single handler, overrides legacy duplicates)
+jQuery(function($) {
+    function bindMainAccordion() {
+        // Remove any previously registered delegated handlers for the customer rows
+        $(document).off('click', '.customer-summary');
+
+        // Toggle details row (single expanded customer at a time)
+        $(document).on('click', '.customer-summary', function(e) {
+            const row = $(this);
+            const customerId = row.data('customer');
+            const detailsRow = $(`.customer-details[data-customer='${customerId}']`);
+            if (!detailsRow.length) {
+                return;
+            }
+
+            const isOpen = row.hasClass('open');
+
+            // close others
+            $('.customer-summary.open').not(row).removeClass('open');
+            $('.customer-details:visible').not(detailsRow).hide();
+
+            row.toggleClass('open', !isOpen);
+            detailsRow.toggle(!isOpen);
+        });
+
+        // Prevent buttons inside summary/details from toggling the accordion
+        $(document).off('click', '.kbbm-edit-customer');
+        $(document).on('click', '.kbbm-edit-customer', function(e) {
+            e.stopPropagation();
+        });
+
+        // Auto-open a customer after save: #customer-<id>
+        const hash = window.location.hash || '';
+        const match = hash.match(/#customer-(\d+)/);
+        if (match && match[1]) {
+            const cid = match[1];
+            const summary = $(`.customer-summary[data-customer='${cid}']`);
+            if (summary.length && !summary.hasClass('open')) {
+                summary.trigger('click');
+                const top = summary.offset().top - 90;
+                if (top > 0) {
+                    $('html, body').animate({ scrollTop: top }, 200);
+                }
+            }
+        }
+    }
+
+    // Run after other ready handlers have registered their listeners.
+    setTimeout(bindMainAccordion, 0);
+    setTimeout(bindMainAccordion, 250);
+});
+
 jQuery(document).ready(function($) {
 
     const dcCustomers = Array.isArray(m365Ajax.dcCustomers) ? m365Ajax.dcCustomers : [];
@@ -176,7 +228,7 @@ jQuery(document).ready(function($) {
             inlineFormRow.remove();
         }
 
-        inlineFormRow = $('<tr class="inline-form-row"><td colspan="6"></td></tr>');
+        inlineFormRow = $('<tr class="inline-form-row"><td colspan="7"></td></tr>');
         inlineFormRow.find('td').append(customerFormWrapper);
         row.after(inlineFormRow);
         customerFormWrapper.show();
@@ -775,14 +827,20 @@ jQuery(document).ready(function($) {
         e.preventDefault();
 
         const id = $(this).data('id');
-        if (!id || !confirm('Delete this customer?')) {
+        const force = parseInt($(this).data('force') || 0, 10) === 1;
+        const confirmMsg = force
+            ? 'מחיקה בכפייה תמחק גם רישיונות וטננטים של הלקוח. להמשיך?'
+            : 'למחוק את הלקוח?';
+
+        if (!id || !confirm(confirmMsg)) {
             return;
         }
 
         $.post(m365Ajax.ajaxurl, {
             action: 'kbbm_delete_customer',
             nonce: m365Ajax.nonce,
-            id: id
+            id: id,
+            force: force ? 1 : 0
         }, function(response) {
             if (response && response.success) {
                 location.reload();
@@ -842,6 +900,12 @@ jQuery(document).ready(function($) {
                     const responseData = response.data || {};
                     const message = responseData.message || 'הלקוח נשמר בהצלחה';
                     showMessage('success', message);
+
+                    // After reload, auto-open the saved customer row.
+                    const openCustomerId = responseData.customer_id || $('#customer-id').val() || '';
+                    if (openCustomerId) {
+                        window.location.hash = `customer-${openCustomerId}`;
+                    }
 
                     if (syncAfterSave && responseData.customer_id) {
                         $.post(m365Ajax.ajaxurl, {
