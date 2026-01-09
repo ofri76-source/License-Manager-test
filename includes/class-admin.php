@@ -349,27 +349,113 @@ class M365_LM_Admin {
         }
         
         global $wpdb;
-        $customer_id = intval($_POST['id']);
-        
-        // בדיקה אם יש רישיונות קשורים
-        $table_licenses = $wpdb->prefix . 'm365_licenses';
-        $count = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $table_licenses WHERE customer_id = %d",
+
+        $customer_id = isset($_POST['id']) ? intval($_POST['id']) : 0;
+        $force       = isset($_POST['force']) ? intval($_POST['force']) : 0;
+
+        if ($customer_id <= 0) {
+            wp_send_json_error(array('message' => 'מזהה לקוח חסר'));
+        }
+
+        $customer = M365_LM_Database::get_customer($customer_id);
+        if (!$customer) {
+            wp_send_json_error(array('message' => 'לקוח לא נמצא'));
+        }
+
+        $table_m365_licenses = $wpdb->prefix . 'm365_licenses';
+        $table_kb_licenses   = $wpdb->prefix . 'kb_billing_licenses';
+        $table_tenants       = $wpdb->prefix . 'kb_billing_customer_tenants';
+        $table_baseline      = $wpdb->prefix . 'kb_billing_license_period_baseline';
+
+        $m365_count = 0;
+        $kb_count   = 0;
+        $tenant_count = 0;
+
+        // counts
+        $m365_count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table_m365_licenses} WHERE customer_id = %d",
             $customer_id
         ));
-        
-        if ($count > 0) {
-            wp_send_json_error(array('message' => 'לא ניתן למחוק לקוח עם רישיונות קיימים'));
+
+        $kb_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_kb_licenses)) === $table_kb_licenses;
+        if ($kb_exists) {
+            $kb_count = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table_kb_licenses} WHERE customer_id = %d AND is_deleted = 0",
+                $customer_id
+            ));
         }
-        
-        $table_customers = M365_LM_Database::get_customers_table_name();
-        $result = $wpdb->delete($table_customers, array('id' => $customer_id));
-        
-        if ($result) {
+
+        $tenants_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_tenants)) === $table_tenants;
+        if ($tenants_exists) {
+            $tenant_count = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table_tenants} WHERE customer_id = %d",
+                $customer_id
+            ));
+        }
+
+        if (!$force && ($m365_count > 0 || $kb_count > 0 || $tenant_count > 0)) {
+            wp_send_json_error(array('message' => 'לא ניתן למחוק לקוח עם רישיונות/טננטים קיימים. הפעל מחיקה בכפייה.'));
+        }
+
+        // Force delete: remove licenses + tenants (and baseline if exists)
+        if ($force) {
+            // Remove legacy licenses
+            $wpdb->query($wpdb->prepare(
+                "DELETE FROM {$table_m365_licenses} WHERE customer_id = %d",
+                $customer_id
+            ));
+
+            // Remove kb licenses
+            if ($kb_exists) {
+                $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$table_kb_licenses} WHERE customer_id = %d",
+                    $customer_id
+                ));
+            }
+
+            // Remove tenants
+            if ($tenants_exists) {
+                $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$table_tenants} WHERE customer_id = %d",
+                    $customer_id
+                ));
+            }
+
+            // Remove baseline rows if table exists
+            $baseline_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_baseline)) === $table_baseline;
+            if ($baseline_exists) {
+                $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$table_baseline} WHERE customer_id = %d",
+                    $customer_id
+                ));
+            }
+        }
+
+        // Delete customer from active table
+        $active_customers_table = M365_LM_Database::get_customers_table_name();
+        $deleted = (bool) $wpdb->delete($active_customers_table, array('id' => $customer_id));
+
+        // Also try to delete from the other customers table by customer_number (if exists)
+        $customer_number = isset($customer->customer_number) ? $customer->customer_number : '';
+        $kb_customers    = $wpdb->prefix . 'kb_billing_customers';
+        $legacy_customers = $wpdb->prefix . 'm365_customers';
+        $kb_customers_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $kb_customers)) === $kb_customers;
+        $legacy_customers_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $legacy_customers)) === $legacy_customers;
+
+        if (!empty($customer_number)) {
+            if ($kb_customers_exists && $active_customers_table !== $kb_customers) {
+                $wpdb->delete($kb_customers, array('customer_number' => $customer_number));
+            }
+            if ($legacy_customers_exists && $active_customers_table !== $legacy_customers) {
+                $wpdb->delete($legacy_customers, array('customer_number' => $customer_number));
+            }
+        }
+
+        if ($deleted) {
             wp_send_json_success(array('message' => 'לקוח נמחק בהצלחה'));
-        } else {
-            wp_send_json_error(array('message' => 'שגיאה במחיקת הלקוח'));
         }
+
+        wp_send_json_error(array('message' => 'שגיאה במחיקת הלקוח'));
     }
 
     // AJAX - יצירת סקריפט PowerShell מותאם ללקוח
