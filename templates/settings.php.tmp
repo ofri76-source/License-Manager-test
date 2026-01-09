@@ -1,0 +1,51 @@
+<div class="m365-lm-container">
+    <?php
+        $portal_urls    = function_exists('kbbm_get_portal_urls') ? kbbm_get_portal_urls() : array();
+        $main_url       = $portal_urls['main'] ?? 'https://kb.macomp.co.il/?page_id=14296';
+        $recycle_url    = $portal_urls['recycle'] ?? 'https://kb.macomp.co.il/?page_id=14291';
+        $settings_url   = $portal_urls['settings'] ?? 'https://kb.macomp.co.il/?page_id=14292';
+        $logs_url       = $portal_urls['logs'] ?? 'https://kb.macomp.co.il/?page_id=14285';
+        $alerts_url     = $portal_urls['alerts'] ?? 'https://kb.macomp.co.il/?page_id=14290';
+        $active         = isset($active) ? $active : '';
+        $license_types  = isset($license_types) ? $license_types : array();
+        $log_retention_days = isset($log_retention_days) ? intval($log_retention_days) : 120;
+        $use_test_server = (int) get_option('kbbm_use_test_server', 0);
+        $secret_alert_red_days = (int) get_option('kbbm_secret_alert_red_days', 15);
+        $secret_alert_yellow_days = (int) get_option('kbbm_secret_alert_yellow_days', 45);
+        $license_change_start_day = (int) get_option('kbbm_license_change_start_day', 1);
+    ?>
+    <?php if (empty($kbbm_single_page)) : ?>
+<div class="m365-nav-links">
+        <a href="<?php echo esc_url($main_url); ?>" class="<?php echo $active === 'main' ? 'active' : ''; ?>">ראשי</a>
+        <a href="<?php echo esc_url($recycle_url); ?>" class="<?php echo $active === 'recycle' ? 'active' : ''; ?>">סל מחזור</a>
+        <a href="<?php echo esc_url($settings_url); ?>" class="<?php echo $active === 'settings' ? 'active' : ''; ?>">הגדרות</a>
+            <a href="<?php echo esc_url($logs_url); ?>" class="<?php echo $active === 'logs' ? 'active' : ''; ?>">לוגים</a>
+            <a href="<?php echo esc_url($alerts_url); ?>" class="<?php echo $active === 'alerts' ? 'active' : ''; ?>">התראות</a>
+    </div>
+<?php endif; ?>
+
+    <div class="m365-header">
+        <h2>הגדרות</h2>
+    </div>
+
+    <div id="sync-message" class="m365-message" style="display:none;"></div>
+
+    <div class="m365-settings-tabs">
+        <button class="m365-tab-btn active" data-tab="customers">ניהול לקוחות</button>
+        <button class="m365-tab-btn" data-tab="api-setup">הגדרת API</button>
+        <button class="m365-tab-btn" data-tab="license-types">סוגי רישיונות</button>
+        <button class="m365-tab-btn" data-tab="log-settings">הגדרות לוגים</button>
+    </div>
+
+
+    <!-- טאב לקוחות -->
+    <div class="m365-tab-content active" id="customers-tab">
+        <div class="m365-section">
+            <h3>ניהול לקוחות</h3>
+            <p>ניהול לקוחות (הוספה/עריכה/מחיקה) עבר למסך הראשי.</p>
+            <p>
+                <a class="m365-btn m365-btn-primary" href="<?php echo esc_url($main_url); ?>">פתח מסך ראשי</a>
+            </p>
+        </div>
+    </div>
+
