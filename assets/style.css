@@ -252,16 +252,90 @@
     display: table-row;
 }
 
-.kbbm-report-table tbody tr.customer-summary {
-    background-color: #0078d4;
-    color: #fff;
-    font-weight: bold;
+/* Main table (customers) */
+.kbbm-report-table.kbbm-main-table tbody tr.customer-summary {
+    background-color: #9ad1f0;
+    color: #000;
+    font-weight: 700;
     cursor: pointer;
 }
 
-.kbbm-report-table tbody tr.customer-summary:hover,
-.kbbm-report-table tbody tr.customer-summary.open {
-    background-color: #005a9e;
+.kbbm-report-table.kbbm-main-table tbody tr.customer-summary:hover,
+.kbbm-report-table.kbbm-main-table tbody tr.customer-summary.open {
+    background-color: #86c5e8;
+}
+
+.kbbm-report-table.kbbm-main-table tbody tr.customer-summary td {
+    vertical-align: middle;
+}
+
+.kbbm-report-table.kbbm-main-table tbody tr.customer-details td {
+    background-color: #eaf4ff;
+    padding: 12px;
+}
+
+.kbbm-badge {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: #fff;
+    color: #0b3a5d;
+}
+
+.kbbm-badge-self {
+    background: #fff6d6;
+    color: #704214;
+}
+
+.kbbm-muted {
+    opacity: 0.7;
+}
+
+.kbbm-secret-days {
+    text-align: center;
+    font-weight: 800;
+}
+
+.kbbm-secret-days.is-ok { color: #0a6b2d; }
+.kbbm-secret-days.is-warning { color: #8a5a00; }
+.kbbm-secret-days.is-danger,
+.kbbm-secret-days.is-expired { color: #b00020; }
+
+.kbbm-change {
+    text-align: center;
+    font-weight: 800;
+}
+
+.kbbm-change.kbbm-nonzero {
+    color: #c00000;
+}
+
+.kbbm-details-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+
+.kbbm-details-table-wrapper {
+    background: #fff;
+    border: 1px solid #dfe1e6;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.kbbm-details-table {
+    margin: 0;
+}
+
+.kbbm-details-notes {
+    margin-top: 10px;
+    padding: 10px;
+    background: #ffffff;
+    border: 1px solid #dfe1e6;
+    border-radius: 8px;
 }
 
 .kbbm-report-table tbody tr.detail-row {
@@ -276,8 +350,9 @@
     background-color: #f6f9ff;
 }
 
+/* Prices are driven by License Types, not edited inline */
 .kbbm-report-table td.editable-price {
-    cursor: pointer;
+    cursor: default;
 }
 
 .inline-price-input {
